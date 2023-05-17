@@ -13,7 +13,7 @@ import type { DeployAction, DeployActionConfig } from "../actions/deploy"
 import type { RunAction, RunActionConfig } from "../actions/run"
 import type { TestAction, TestActionConfig } from "../actions/test"
 import { joi, zodObjectToJoi } from "../config/common"
-import { BaseProviderConfig, baseProviderConfigSchemaZod } from "../config/provider"
+import { BaseProviderConfig, GenericProviderConfig, Provider, baseProviderConfigSchemaZod } from "../config/provider"
 import { s } from "../config/zod"
 import { GardenBaseError, ValidationError } from "../exceptions"
 import type {
@@ -41,9 +41,13 @@ import type {
   ProviderHandlers,
 } from "./plugin"
 import type { PluginToolSpec } from "./tools"
-import { dedent } from "../util/string"
+import { dedent, splitLast } from "../util/string"
 import type { BuildStatus as _BuildStatus } from "./handlers/Build/get-status"
 import chalk from "chalk"
+import type { PluginContext as _PluginContext } from "../plugin-context"
+import type { ServiceIngress as _ServiceIngress } from "../types/service"
+import { joinWithPosix } from "../util/fs"
+import type { Log as _Log } from "../logger/log-entry"
 
 type ObjectBaseZod = z.ZodObject<{}>
 
@@ -159,8 +163,11 @@ export class GardenSdkProvider<
   ProviderConfigType extends BaseProviderConfig,
   ProviderOutputsType extends {}
 > {
-  _configType: ProviderConfigType
-  _outputsType: ProviderOutputsType
+  T: {
+    Config: ProviderConfigType
+    Outputs: ProviderOutputsType
+    Provider: Provider<ProviderConfigType>
+  }
 
   constructor(
     public readonly name: string,
@@ -287,7 +294,7 @@ export class GardenSdkActionDefinition<
       GetActionTypeParams<
         GetActionTypeDescriptions<GetActionType<Kind, SpecType, StaticOutputsType, RuntimeOutputsType>>[HandlerType]
       > &
-        PluginActionParamsBase<P["_configType"]>,
+        PluginActionParamsBase<P["T"]["Outputs"]>,
       GetActionTypeResults<
         GetActionTypeDescriptions<GetActionType<Kind, SpecType, StaticOutputsType, RuntimeOutputsType>>[HandlerType]
       >
@@ -384,11 +391,18 @@ export const sdk = {
   util: {
     chalk,
     dedent,
+    joinPathWithPosix: joinWithPosix,
+    splitLast,
   },
 }
 
 export namespace sdk {
   export namespace types {
     export type BuildStatus = _BuildStatus
+    export type Log = _Log
+    export type PluginContext<C extends GenericProviderConfig = GenericProviderConfig> = _PluginContext<C>
+    export type ServiceIngress = _ServiceIngress
+
+    export type infer<T extends z.ZodType<any, any, any>> = z.infer<T>
   }
 }

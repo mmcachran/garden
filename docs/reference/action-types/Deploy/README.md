@@ -11,5 +11,6 @@ title: Deploy
   * [`helm`](./helm.md)
   * [`configmap`](./configmap.md)
   * [`persistentvolumeclaim`](./persistentvolumeclaim.md)
+  * [`docker-compose-service`](./docker-compose-service.md)
   * [`terraform`](./terraform.md)
   * [`pulumi`](./pulumi.md)

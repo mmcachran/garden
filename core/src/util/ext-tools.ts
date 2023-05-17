@@ -43,6 +43,7 @@ export interface ExecParams {
   ignoreError?: boolean
   stdout?: Writable
   stderr?: Writable
+  streamLogs?: PluginContext
 }
 
 export interface SpawnParams extends ExecParams {
@@ -63,7 +64,7 @@ export class CliWrapper {
     return this.toolPath
   }
 
-  async exec({ args, cwd, env, log, timeoutSec, input, ignoreError, stdout, stderr }: ExecParams) {
+  async exec({ args, cwd, env, log, timeoutSec, input, ignoreError, stdout, stderr, streamLogs }: ExecParams) {
     const path = await this.ensurePath(log)
 
     if (!args) {
@@ -74,6 +75,27 @@ export class CliWrapper {
     }
 
     log.silly(`Execing '${path} ${args.join(" ")}' in ${cwd}`)
+
+    if (streamLogs) {
+      const logEventContext = {
+        origin: this.name,
+        log: log.createLog({ fixLevel: LogLevel.verbose }),
+      }
+
+      const outputStream = split2()
+      outputStream.on("error", () => {})
+      outputStream.on("data", (data: Buffer) => {
+        streamLogs.events.emit("log", {
+          level: "verbose",
+          timestamp: new Date().toISOString(),
+          msg: data.toString(),
+          ...logEventContext,
+        })
+      })
+
+      stdout = outputStream
+      stderr = outputStream
+    }
 
     return exec(path, args, {
       cwd,
