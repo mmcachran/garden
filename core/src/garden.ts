@@ -150,6 +150,7 @@ import { MonitorManager } from "./monitors/manager"
 import { AnalyticsHandler } from "./analytics/analytics"
 import { getGardenInstanceKey } from "./server/helpers"
 import { SuggestedCommand } from "./commands/base"
+import { GitRepoHandler } from "./vcs/git-repo"
 
 const defaultLocalAddress = "localhost"
 
@@ -317,7 +318,10 @@ export class Garden {
 
     this.asyncLock = new AsyncLock()
 
-    this.vcs = new GitHandler({
+    const gitMode = gardenEnv.GARDEN_GIT_SCAN_MODE || params.projectConfig.scan?.git?.mode
+    const handlerCls = gitMode === "repo" ? GitRepoHandler : GitHandler
+
+    this.vcs = new handlerCls({
       garden: this,
       projectRoot: params.projectRoot,
       gardenDirPath: params.gardenDirPath,
@@ -1013,7 +1017,7 @@ export class Garden {
 
       let updated = false
 
-      // Resolve modules from specs and add to the list
+      // Resolve actions from augmentGraph specs and add to the list
       await Bluebird.map(addActions || [], async (config) => {
         // There is no actual config file for plugin modules (which the prepare function assumes)
         delete config.internal?.configFilePath
@@ -1033,6 +1037,7 @@ export class Garden {
           configsByKey: actionConfigs,
           mode: actionModes[key] || "default",
           linkedSources,
+          scanRoot: config.internal.basePath,
         })
 
         graph.addAction(action)
@@ -1098,39 +1103,34 @@ export class Garden {
     })
   }
 
-  async resolveAction<T extends Action>({ action, graph, log }: { action: T; log: Log; graph?: ConfigGraph }) {
-    if (!graph) {
-      graph = await this.getConfigGraph({ log, emit: false })
-    }
-
+  async resolveAction<T extends Action>({ action, graph, log }: { action: T; log: Log; graph: ConfigGraph }) {
     return resolveAction({ garden: this, action, graph, log })
   }
 
-  async resolveActions<T extends Action>({ actions, graph, log }: { actions: T[]; log: Log; graph?: ConfigGraph }) {
-    if (!graph) {
-      graph = await this.getConfigGraph({ log, emit: false })
-    }
-
+  async resolveActions<T extends Action>({ actions, graph, log }: { actions: T[]; log: Log; graph: ConfigGraph }) {
     return resolveActions({ garden: this, actions, graph, log })
   }
 
-  async executeAction<T extends Action>({ action, graph, log }: { action: T; log: Log; graph?: ConfigGraph }) {
-    if (!graph) {
-      graph = await this.getConfigGraph({ log, emit: false })
-    }
-
+  async executeAction<T extends Action>({ action, graph, log }: { action: T; log: Log; graph: ConfigGraph }) {
     return executeAction({ garden: this, action, graph, log })
   }
 
   /**
    * Resolves the module version (i.e. build version) for the given module configuration and its build dependencies.
    */
-  async resolveModuleVersion(
-    log: Log,
-    moduleConfig: ModuleConfig,
-    moduleDependencies: GardenModule[],
-    force = false
-  ): Promise<ModuleVersion> {
+  async resolveModuleVersion({
+    log,
+    moduleConfig,
+    moduleDependencies,
+    force = false,
+    scanRoot,
+  }: {
+    log: Log
+    moduleConfig: ModuleConfig
+    moduleDependencies: GardenModule[]
+    force?: boolean
+    scanRoot?: string
+  }): Promise<ModuleVersion> {
     const moduleName = moduleConfig.name
     const depModuleNames = moduleDependencies.map((m) => m.name)
     depModuleNames.sort()
@@ -1148,7 +1148,12 @@ export class Garden {
 
     const cacheContexts = [...moduleDependencies, moduleConfig].map((c: ModuleConfig) => getModuleCacheContext(c))
 
-    const treeVersion = await this.vcs.getTreeVersion(log, this.projectName, moduleConfig)
+    const treeVersion = await this.vcs.resolveTreeVersion({
+      log,
+      projectName: this.projectName,
+      config: moduleConfig,
+      scanRoot,
+    })
 
     validateSchema(treeVersion, treeVersionSchema(), {
       context: `${this.vcs.name} tree version for module at ${moduleConfig.path}`,
@@ -1303,7 +1308,7 @@ export class Garden {
         }
 
         for (const config of actionConfigs) {
-          this.addActionConfig((config as unknown) as BaseActionConfig)
+          this.addActionConfig(config as unknown as BaseActionConfig)
           actionsCount++
         }
       }

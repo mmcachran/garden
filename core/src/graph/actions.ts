@@ -63,6 +63,7 @@ import { ConfigContext } from "../config/template-contexts/base"
 import { LinkedSource, LinkedSourceMap } from "../config-store/local"
 import { relative } from "path"
 import { profileAsync } from "../util/profiling"
+import { getConfigBasePath } from "../vcs/vcs"
 
 export const actionConfigsToGraph = profileAsync(async function actionConfigsToGraph({
   garden,
@@ -111,6 +112,10 @@ export const actionConfigsToGraph = profileAsync(async function actionConfigsToG
     }
   }
 
+  // Optimize file scanning by avoiding unnecessarily broad scans when project is not in repo root.
+  const allPaths = Object.values(configsByKey).map((c) => getConfigBasePath(c))
+  const minimalRoots = await garden.vcs.getMinimalRoots(log, allPaths)
+
   const router = await garden.getActionRouter()
 
   // TODO: Maybe we could optimize resolving tree versions, avoid parallel scanning of the same directory etc.
@@ -150,7 +155,17 @@ export const actionConfigsToGraph = profileAsync(async function actionConfigsToG
     }
 
     try {
-      const action = await actionFromConfig({ garden, graph, config, router, log, configsByKey, mode, linkedSources })
+      const action = await actionFromConfig({
+        garden,
+        graph,
+        config,
+        router,
+        log,
+        configsByKey,
+        mode,
+        linkedSources,
+        scanRoot: minimalRoots[getConfigBasePath(config)],
+      })
 
       if (!action.supportsMode(mode)) {
         if (explicitMode) {
@@ -184,6 +199,7 @@ export const actionFromConfig = profileAsync(async function actionFromConfig({
   configsByKey,
   mode,
   linkedSources,
+  scanRoot,
 }: {
   garden: Garden
   graph: ConfigGraph
@@ -193,6 +209,7 @@ export const actionFromConfig = profileAsync(async function actionFromConfig({
   configsByKey: ActionConfigsByKey
   mode: ActionMode
   linkedSources: LinkedSourceMap
+  scanRoot?: string
 }) {
   let action: Action
 
@@ -263,7 +280,9 @@ export const actionFromConfig = profileAsync(async function actionFromConfig({
   }
 
   const dependencies = dependenciesFromActionConfig(log, config, configsByKey, definition, templateContext)
-  const treeVersion = config.internal.treeVersion || (await garden.vcs.getTreeVersion(log, garden.projectName, config))
+  const treeVersion =
+    config.internal.treeVersion ||
+    (await garden.vcs.resolveTreeVersion({ log, projectName: garden.projectName, config, scanRoot }))
 
   const variables = await resolveVariables({
     basePath: config.internal.basePath,
