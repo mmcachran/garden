@@ -124,7 +124,6 @@ import {
 import { CloudApi, CloudProject, CloudApiDuplicateProjectsError, getGardenCloudDomain } from "./cloud/api"
 import { OutputConfigContext } from "./config/template-contexts/module"
 import { ProviderConfigContext } from "./config/template-contexts/provider"
-import { getSecrets } from "./cloud/get-secrets"
 import type { ConfigContext } from "./config/template-contexts/base"
 import { validateSchema, validateWithPath } from "./config/validation"
 import { pMemoizeDecorator } from "./lib/p-memoize"
@@ -1784,6 +1783,7 @@ export const resolveGardenParams = profileAsync(async function _resolveGardenPar
 
       try {
         cloudProject = await cloudApi.getOrCreateProjectByName(projectName)
+        cloudLog.debug(`${distroName} project ID: ${cloudProject.id}`)
       } catch (err) {
         if (err instanceof CloudApiDuplicateProjectsError) {
           cloudLog.warn(chalk.yellow(wordWrap(err.message, 120)))
@@ -1799,9 +1799,10 @@ export const resolveGardenParams = profileAsync(async function _resolveGardenPar
 
       // Only fetch secrets if the projectId exists in the cloud API instance
       try {
-        secrets = await getSecrets({ log: cloudLog, projectId: cloudProject.id, environmentName, cloudApi })
+        cloudLog.debug(`Fetching secrets from ${cloudDomain}.`)
+        secrets = await cloudApi.getSecrets({ log: cloudLog, projectId: cloudProject.id, environmentName })
         cloudLog.verbose(chalk.green("Ready"))
-        cloudLog.debug(`Fetched ${Object.keys(secrets).length} secrets from ${cloudDomain}`)
+        cloudLog.debug(`Fetched ${Object.keys(secrets).length} secrets from ${cloudDomain}.`)
       } catch (err) {
         cloudLog.debug(`Fetching secrets failed with error: ${err.message}`)
       }

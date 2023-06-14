@@ -37,7 +37,7 @@ import {
   ProviderHandlers,
   RegisterPluginParam,
 } from "../src/plugin/plugin"
-import { Garden, GardenOpts } from "../src/garden"
+import { Garden } from "../src/garden"
 import { ModuleConfig } from "../src/config/module"
 import { ModuleVersion } from "../src/vcs/vcs"
 import { DEFAULT_BUILD_TIMEOUT_SEC, GARDEN_CORE_ROOT, GardenApiVersion, gardenEnv } from "../src/constants"
@@ -436,12 +436,6 @@ export const defaultModuleConfig: ModuleConfig = {
   ],
   testConfigs: [],
   taskConfigs: [],
-}
-
-export class TestGardenCli extends GardenCli {
-  async getGarden(workingDir: string, opts: GardenOpts) {
-    return makeTestGarden(workingDir, opts)
-  }
 }
 
 export const makeTestModule = (params: Partial<ModuleConfig> = {}): ModuleConfig => {
