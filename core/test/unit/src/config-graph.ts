@@ -25,7 +25,7 @@ import { ConfigGraph, ConfigGraphNode } from "../../../src/graph/config-graph"
 import { Garden } from "../../../src/garden"
 import { DEFAULT_BUILD_TIMEOUT_SEC, GARDEN_CORE_ROOT, GardenApiVersion } from "../../../src/constants"
 import tmp from "tmp-promise"
-import { GardenPlugin } from "../../../src/plugin/plugin"
+import { GardenPluginSpec } from "../../../src/plugin/plugin"
 import { ProjectConfig } from "../../../src/config/project"
 import { ActionKind, BaseActionConfig } from "../../../src/actions/types"
 import { joi } from "../../../src/config/common"
@@ -55,7 +55,7 @@ const makeAction = ({
   spec,
 })
 
-async function makeGarden(tmpDir: tmp.DirectoryResult, plugin: GardenPlugin) {
+async function makeGarden(tmpDir: tmp.DirectoryResult, plugin: GardenPluginSpec) {
   const config: ProjectConfig = createProjectConfig({
     path: tmpDir.path,
     providers: [{ name: "test" }],
