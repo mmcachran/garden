@@ -281,7 +281,6 @@ export class _GetActionStatusesCommand extends ConsoleCommand {
   outputsSchema = () => joi.object()
 
   async action({ garden, log }: CommandParams): Promise<CommandResult<GetActionStatusesCommandResult>> {
-
     const router = await garden.getActionRouter()
     const graph = await garden.getResolvedConfigGraph({ log, emit: true })
 
