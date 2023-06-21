@@ -11,7 +11,7 @@ import { getLogLevelChoices, LogLevel } from "../logger/logger"
 import stringArgv from "string-argv"
 import { Command, CommandParams, CommandResult, ConsoleCommand } from "../commands/base"
 import { createSchema, joi } from "../config/common"
-import type { Log } from "../logger/log-entry"
+import { createActionLog, type Log } from "../logger/log-entry"
 import { ParameterValues, ChoicesParameter, StringParameter, StringsParameter, GlobalOptions } from "../cli/params"
 import { parseCliArgs, pickCommand, processCliArgs } from "../cli/helpers"
 import type { AutocompleteSuggestion } from "../cli/autocomplete"
@@ -28,11 +28,19 @@ import type { ParsedArgs } from "minimist"
 import type { ServeCommand } from "../commands/serve"
 import { uuidv4 } from "../util/random"
 import type { StatusCommandResult } from "../commands/get/get-status"
-import { omit } from "lodash"
-import { sanitizeValue } from "../util/logging"
-import { getSyncStatuses } from "../commands/sync/sync-status"
 import type { DeployStatus } from "../plugin/handlers/Deploy/get-status"
 import type { GetSyncStatusResult } from "../plugin/handlers/Deploy/get-sync-status"
+import { fromPairs, omit } from "lodash"
+import { sanitizeValue } from "../util/logging"
+import { getSyncStatuses } from "../commands/sync/sync-status"
+import Bluebird from "bluebird"
+import { ActionRouter } from "../router/router"
+import { ResolvedConfigGraph } from "../graph/config-graph"
+import { makeActionCompletePayload } from "../events/util"
+import { ActionStatusPayload } from "../events/action-status-events"
+import { BuildStatusForEventPayload } from "../plugin/handlers/Build/get-status"
+import { DeployStatusForEventPayload } from "../types/service"
+import { RunStatusForEventPayload } from "../plugin/plugin"
 
 export interface CommandMap {
   [key: string]: {
@@ -250,8 +258,129 @@ export class _GetDeployStatusCommand extends ConsoleCommand {
 
     const sanitized = sanitizeValue(deepFilter(result, (_, key) => key !== "executedAction"))
 
-    return { result: sanitized }
+    return { result: sanitized }
   }
+}
+
+interface GetActionStatusesCommandResult {
+  actions: {
+    build: Record<string, ActionStatusPayload<BuildStatusForEventPayload>>
+    deploy: Record<string, ActionStatusPayload<DeployStatusForEventPayload>>
+    run: Record<string, ActionStatusPayload<RunStatusForEventPayload>>
+    test: Record<string, ActionStatusPayload<RunStatusForEventPayload>>
+  }
+}
+
+export class _GetActionStatusesCommand extends ConsoleCommand {
+  name = "_get-action-statuses"
+  help = "[Internal/Experimental] Retuns a map of all actions statuses."
+  hidden = true
+
+  streamEvents = false
+
+  outputsSchema = () => joi.object()
+
+  async action({ garden, log }: CommandParams): Promise<CommandResult<GetActionStatusesCommandResult>> {
+
+    const router = await garden.getActionRouter()
+    const graph = await garden.getResolvedConfigGraph({ log, emit: true })
+
+    const actions = await Bluebird.props({
+      build: getBuildStatuses(router, graph, log),
+      deploy: getDeployStatuses(router, graph, log),
+      test: getTestStatuses(router, graph, log),
+      run: getRunStatuses(router, graph, log),
+    })
+
+
+    return { result: { actions } }
+  }
+}
+
+async function getDeployStatuses(router: ActionRouter, graph: ResolvedConfigGraph, log: Log) {
+  const actions = graph.getDeploys()
+
+  return fromPairs(
+    await Bluebird.map(actions, async (action) => {
+      const startedAt = new Date().toISOString()
+      const actionLog = createActionLog({ log, actionName: action.name, actionKind: action.kind })
+      const { result } = await router.deploy.getStatus({ action, log: actionLog, graph })
+
+      const payload = makeActionCompletePayload({
+        result,
+        operation: "getStatus",
+        startedAt,
+        force: false,
+        action,
+      }) as ActionStatusPayload<DeployStatusForEventPayload>
+
+      return [action.name, payload]
+    })
+  )
+}
+
+async function getBuildStatuses(router: ActionRouter, graph: ResolvedConfigGraph, log: Log) {
+  const actions = graph.getBuilds()
+
+  return fromPairs(
+    await Bluebird.map(actions, async (action) => {
+      const startedAt = new Date().toISOString()
+      const actionLog = createActionLog({ log, actionName: action.name, actionKind: action.kind })
+      const { result } = await router.build.getStatus({ action, log: actionLog, graph })
+
+      const payload = makeActionCompletePayload({
+        result,
+        operation: "getStatus",
+        startedAt,
+        force: false,
+        action,
+      }) as ActionStatusPayload<BuildStatusForEventPayload>
+
+      return [action.name, payload]
+    })
+  )
+}
+
+async function getTestStatuses(router: ActionRouter, graph: ResolvedConfigGraph, log: Log) {
+  const actions = graph.getTests()
+
+  return fromPairs(
+    await Bluebird.map(actions, async (action) => {
+      const actionLog = createActionLog({ log, actionName: action.name, actionKind: action.kind })
+      const startedAt = new Date().toISOString()
+      const { result } = await router.test.getResult({ action, log: actionLog, graph })
+      const payload = makeActionCompletePayload({
+        result,
+        operation: "getStatus",
+        startedAt,
+        force: false,
+        action,
+      }) as ActionStatusPayload<RunStatusForEventPayload>
+      return [action.name, payload]
+    })
+  )
+}
+
+async function getRunStatuses(router: ActionRouter, graph: ResolvedConfigGraph, log: Log) {
+  const actions = graph.getRuns()
+
+  return fromPairs(
+    await Bluebird.map(actions, async (action) => {
+      const actionLog = createActionLog({ log, actionName: action.name, actionKind: action.kind })
+      const startedAt = new Date().toISOString()
+      const { result } = await router.run.getResult({ action, log: actionLog, graph })
+
+      const payload = makeActionCompletePayload({
+        result,
+        operation: "getStatus",
+        startedAt,
+        force: false,
+        action,
+      }) as ActionStatusPayload<RunStatusForEventPayload>
+
+      return [action.name, payload]
+    })
+  )
 }
 
 export interface BaseServerRequest {
