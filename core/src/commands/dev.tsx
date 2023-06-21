@@ -12,7 +12,7 @@ import React, { FC, useState } from "react"
 import { Box, render, Text, useInput, useStdout } from "ink"
 import { serveArgs, ServeCommand, serveOpts } from "./serve"
 import { LoggerType } from "../logger/logger"
-import { ParameterError } from "../exceptions"
+import { InternalError, ParameterError } from "../exceptions"
 import { InkTerminalWriter } from "../logger/writers/ink-terminal-writer"
 import { CommandLine } from "../cli/command-line"
 import chalk from "chalk"
@@ -189,7 +189,10 @@ Use ${chalk.bold("up/down")} arrow keys to scroll through your command history.
 
   private async initCommandHandler(params: ActionParams) {
     const _this = this
-    const { garden, log, opts } = params
+    const { garden, log, opts, cli } = params
+    if (!cli) {
+      throw new InternalError(`Missing cli argument in dev command.`, {})
+    }
 
     // override the session for this manager to ensure we inherit from
     // the initial garden dummy instance
@@ -204,6 +207,7 @@ Use ${chalk.bold("up/down")} arrow keys to scroll through your command history.
       globalOpts: pick(opts, Object.keys(globalOptions)),
       history: await garden.localConfigStore.get("devCommandHistory"),
       serveCommand: this,
+      cli,
     })
     this.commandLine = cl
 

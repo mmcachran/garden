@@ -36,6 +36,7 @@ import {
   renderCommands,
 } from "./helpers"
 import type { GlobalOptions, ParameterValues } from "./params"
+import { GardenCli } from "./cli"
 
 const defaultMessageDuration = 3000
 const commandLinePrefix = chalk.yellow("🌼  > ")
@@ -131,6 +132,8 @@ export class CommandLine extends TypedEventEmitter<CommandLineEvents> {
   private readonly log: Log
   private readonly globalOpts: Partial<ParameterValues<GlobalOptions>>
 
+  private cli: GardenCli
+
   constructor({
     cwd,
     manager,
@@ -138,6 +141,7 @@ export class CommandLine extends TypedEventEmitter<CommandLineEvents> {
     globalOpts,
     serveCommand,
     extraCommands,
+    cli,
     history = [],
   }: {
     cwd: string
@@ -146,6 +150,7 @@ export class CommandLine extends TypedEventEmitter<CommandLineEvents> {
     globalOpts: Partial<ParameterValues<GlobalOptions>>
     serveCommand: ServeCommand
     extraCommands: Command[]
+    cli: GardenCli
     history?: string[]
   }) {
     super()
@@ -158,6 +163,7 @@ export class CommandLine extends TypedEventEmitter<CommandLineEvents> {
     this.globalOpts = globalOpts
     this.extraCommands = extraCommands
     this.serveCommand = serveCommand
+    this.cli = cli
 
     this.enabled = false
     this.currentCommand = ""
@@ -669,6 +675,7 @@ ${chalk.white.underline("Keys:")}
       opts,
       commandLine: this,
       parentCommand: this.serveCommand,
+      cli: this.cli,
     }
 
     const name = command.getFullName()
